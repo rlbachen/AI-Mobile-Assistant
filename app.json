@@ -7,7 +7,8 @@
     "icon": "./assets/images/icon.png",
     "scheme": "myapp",
     "userInterfaceStyle": "automatic",
-    "newArchEnabled": true,
+    "newArchEnabled": false,
+    "assetBundlePatterns": ["**/*", "models/*"],
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.anonymous.RLAI"
@@ -16,7 +17,8 @@
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#ffffff"
-      }
+      },
+      "package": "com.anonymous.RLAI"
     },
     "web": {
       "bundler": "metro",
