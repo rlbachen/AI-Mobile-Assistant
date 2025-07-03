@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import * as FileSystem from "expo-file-system";
 import {
   SafeAreaView,
@@ -16,6 +16,7 @@ import {
   StatusBar,
 } from "react-native";
 import Icon from "react-native-vector-icons/Feather";
+import FontAwesome6 from "@expo/vector-icons/FontAwesome6";
 import { initLlama, loadLlamaModelInfo } from "llama.rn";
 
 // Types
@@ -24,9 +25,17 @@ type Message = {
   content: string;
 };
 
+type ActionBubble = {
+  id: string;
+  text: string;
+  scale: Animated.Value;
+  opacity: Animated.Value;
+};
+
 type ChatHeaderProps = {
   isDarkMode: boolean;
   clearChat: () => void;
+  onMenuPress: () => void;
 };
 
 type ErrorMessageProps = {
@@ -52,22 +61,109 @@ type ChatInputProps = {
   onVoiceInput: () => void;
 };
 
-type QuickActionProps = {
-  label: string;
-  onPress: () => void;
-  isDarkMode: boolean;
-};
+const therapyPrompts = [
+  "I'm feeling stressed",
+  "Can't sleep",
+  "Need motivation",
+  "Feeling lonely",
+  "Need calm thoughts",
+  "Stress relief",
+  "Help me relax",
+  "Feeling down",
+];
 
 // Components
-const ChatHeader: React.FC<ChatHeaderProps> = ({ isDarkMode, clearChat }) => {
+const ActionBubble: React.FC<{
+  bubble: ActionBubble;
+  onPress: (id: string) => void;
+  isDarkMode: boolean;
+}> = ({ bubble, onPress, isDarkMode }) => {
+  const scaleAnim = useRef(new Animated.Value(1)).current;
+  const opacityAnim = useRef(new Animated.Value(1)).current;
+
+  const animatePress = () => {
+    Animated.sequence([
+      Animated.parallel([
+        Animated.spring(scaleAnim, {
+          toValue: 0.95,
+          useNativeDriver: true,
+        }),
+        Animated.timing(opacityAnim, {
+          toValue: 0.8,
+          duration: 100,
+          useNativeDriver: true,
+        }),
+      ]),
+      Animated.parallel([
+        Animated.spring(scaleAnim, {
+          toValue: 1,
+          useNativeDriver: true,
+        }),
+        Animated.timing(opacityAnim, {
+          toValue: 0,
+          duration: 200,
+          useNativeDriver: true,
+        }),
+      ]),
+    ]).start(() => onPress(bubble.id));
+  };
+
+  return (
+    <Animated.View
+      style={[
+        styles.actionBubble,
+        {
+          transform: [{ scale: scaleAnim }],
+          opacity: opacityAnim,
+        },
+        isDarkMode && styles.darkActionBubble,
+      ]}
+    >
+      <TouchableOpacity onPress={animatePress} style={styles.actionBubbleInner}>
+        <Text style={[styles.actionBubbleText, isDarkMode && styles.darkText]}>
+          {bubble.text}
+        </Text>
+      </TouchableOpacity>
+    </Animated.View>
+  );
+};
+
+const ChatHeader: React.FC<ChatHeaderProps> = ({
+  isDarkMode,
+  clearChat,
+  onMenuPress,
+}) => {
+  const animateNewChat = () => {
+    const clearWithAnimation = () => {
+      // Add a subtle scale animation
+      Animated.sequence([
+        Animated.timing(new Animated.Value(1), {
+          toValue: 0.95,
+          duration: 100,
+          useNativeDriver: true,
+        }),
+        Animated.timing(new Animated.Value(0.95), {
+          toValue: 1,
+          duration: 100,
+          useNativeDriver: true,
+        }),
+      ]).start(clearChat);
+    };
+    clearWithAnimation();
+  };
+
   return (
     <View>
       <StatusBar
-        backgroundColor={isDarkMode ? "#343541" : "#FFFFFF"}
+        backgroundColor={isDarkMode ? "#242634" : "#FFFFFF"}
         barStyle={isDarkMode ? "light-content" : "dark-content"}
       />
       <View style={[styles.header, isDarkMode && styles.darkHeader]}>
-        <TouchableOpacity style={styles.iconButton}>
+        <TouchableOpacity
+          style={styles.iconButton}
+          onPress={onMenuPress}
+          activeOpacity={0.7}
+        >
           <Icon
             name="menu"
             size={24}
@@ -75,9 +171,13 @@ const ChatHeader: React.FC<ChatHeaderProps> = ({ isDarkMode, clearChat }) => {
           />
         </TouchableOpacity>
         <Text style={[styles.timeText, isDarkMode && styles.darkText]}>
-          TIP Research Lab
+          rlbachen
         </Text>
-        <TouchableOpacity style={styles.iconButton} onPress={clearChat}>
+        <TouchableOpacity
+          style={styles.iconButton}
+          onPress={animateNewChat}
+          activeOpacity={0.7}
+        >
           <Icon
             name="plus"
             size={24}
@@ -107,44 +207,43 @@ const ProgressBar = ({ progress, isDarkMode }: ProgressBarProps) => (
   </View>
 );
 
-const QuickAction: React.FC<QuickActionProps> = ({
-  label,
-  onPress,
-  isDarkMode,
-}) => (
-  <TouchableOpacity
-    style={[styles.quickAction, isDarkMode && styles.darkQuickAction]}
-    onPress={onPress}
-  >
-    <Text style={[styles.quickActionText, isDarkMode && styles.darkText]}>
-      {label}
-    </Text>
-  </TouchableOpacity>
+const BrainIcon = ({ isDarkMode }: { isDarkMode: boolean }) => (
+  <View style={styles.brainIconContainer}>
+    <FontAwesome6
+      name="brain"
+      size={24}
+      color={isDarkMode ? "#FFFFFF" : "#382c52"}
+      style={styles.brainIcon}
+    />
+  </View>
 );
 
 const MessageBubble: React.FC<MessageBubbleProps> = ({
   message,
   isDarkMode,
 }) => (
-  <Animated.View
+  <View
     style={[
-      message.role === "user"
-        ? styles.userMessage
-        : isDarkMode
-          ? styles.darkAssistantMessage
-          : styles.lightAssistantMessage,
+      styles.messageContainer,
+      message.role === "user" && styles.userMessage,
+      message.role === "user" && { borderRadius: 25 },
+      message.role === "assistant" && {
+        flexDirection: "column",
+        alignItems: "flex-start",
+      },
     ]}
   >
-    {message.role === "assistant" && <Text></Text>}
+    {message.role === "assistant" && <BrainIcon isDarkMode={isDarkMode} />}
     <Text
       style={[
         styles.messageText,
         isDarkMode ? styles.darkText : styles.lightText,
+        message.role === "assistant" && { marginTop: 10 },
       ]}
     >
       {message.content}
     </Text>
-  </Animated.View>
+  </View>
 );
 
 const ChatInput: React.FC<ChatInputProps> = ({
@@ -154,58 +253,98 @@ const ChatInput: React.FC<ChatInputProps> = ({
   isProcessing,
   isDarkMode,
   onVoiceInput,
-}) => (
-  <View style={styles.footerContainer}>
-    <View style={styles.quickActionsContainer}>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-        <QuickAction
-          label="I don't feel well"
-          onPress={() => setInputMessage("I don't feel well")}
-          isDarkMode={isDarkMode}
-        />
-        <QuickAction
-          label="I'm so stressed"
-          onPress={() => setInputMessage("I'm so stressed")}
-          isDarkMode={isDarkMode}
-        />
-        <QuickAction
-          label="I struggle with academics"
-          onPress={() => setInputMessage("I struggle with academics")}
-          isDarkMode={isDarkMode}
-        />
-      </ScrollView>
-    </View>
+}) => {
+  const [actionBubbles, setActionBubbles] = useState<ActionBubble[]>([]);
+  const scrollViewRef = useRef(null);
+  const [showBubbles, setShowBubbles] = useState(true);
+  const [inputFocused, setInputFocused] = useState(false);
 
-    <View
-      style={[
-        styles.inputContainer,
-        isDarkMode ? styles.darkInput : styles.lightInput,
-      ]}
-    >
-      <TextInput
-        style={[styles.input, { color: isDarkMode ? "#FFFFFF" : "#000000" }]}
-        value={inputMessage}
-        onChangeText={setInputMessage}
-        placeholder="Ask me anything..."
-        placeholderTextColor={isDarkMode ? "#999" : "#666"}
-        multiline
-        editable={!isProcessing}
-      />
+  const createBubbles = () => {
+    return therapyPrompts.slice(0, 5).map((text, index) => ({
+      id: index.toString(),
+      text,
+      scale: new Animated.Value(1),
+      opacity: new Animated.Value(1),
+    }));
+  };
 
-      <TouchableOpacity style={styles.iconButton} onPress={onVoiceInput}>
-        <Icon name="mic" size={20} color={isDarkMode ? "#FFFFFF" : "#888888"} />
-      </TouchableOpacity>
+  const handleBubblePress = (bubbleId: string) => {
+    const bubble = actionBubbles.find((b) => b.id === bubbleId);
+    if (bubble) {
+      setShowBubbles(false);
+      setInputMessage(bubble.text);
+      sendMessage();
+    }
+  };
 
-      <TouchableOpacity
-        style={[styles.sendButton, isProcessing && { opacity: 0.5 }]}
-        onPress={sendMessage}
-        disabled={isProcessing}
+  const handleInputFocus = () => {
+    setInputFocused(true);
+    setShowBubbles(false);
+  };
+
+  useEffect(() => {
+    if (showBubbles) {
+      setActionBubbles(createBubbles());
+    }
+  }, [showBubbles]);
+
+  return (
+    <View style={styles.footerContainer}>
+      {showBubbles && !inputFocused && (
+        <ScrollView
+          ref={scrollViewRef}
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={styles.actionBubblesContainer}
+          contentContainerStyle={styles.actionBubblesContent}
+        >
+          {actionBubbles.map((bubble) => (
+            <ActionBubble
+              key={bubble.id}
+              bubble={bubble}
+              onPress={handleBubblePress}
+              isDarkMode={isDarkMode}
+            />
+          ))}
+        </ScrollView>
+      )}
+
+      <View
+        style={[
+          styles.inputContainer,
+          isDarkMode ? styles.darkInput : styles.lightInput,
+        ]}
       >
-        <Icon name="send" size={20} color="#FFFFFF" />
-      </TouchableOpacity>
+        <TextInput
+          style={[styles.input, { color: isDarkMode ? "#FFFFFF" : "#000000" }]}
+          value={inputMessage}
+          onChangeText={setInputMessage}
+          onFocus={handleInputFocus}
+          placeholder="Ask me anything..."
+          placeholderTextColor={isDarkMode ? "#999" : "#666"}
+          multiline
+          editable={!isProcessing}
+        />
+
+        <TouchableOpacity style={styles.iconButton} onPress={onVoiceInput}>
+          <Icon
+            name="mic"
+            size={20}
+            color={isDarkMode ? "#FFFFFF" : "#888888"}
+          />
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.sendButton, isProcessing && { opacity: 0.5 }]}
+          onPress={sendMessage}
+          disabled={isProcessing}
+        >
+          <Icon name="send" size={20} color="#FFFFFF" />
+        </TouchableOpacity>
+      </View>
     </View>
-  </View>
-);
+  );
+};
 
 export default function HomeScreen() {
   const colorScheme = useColorScheme();
@@ -216,19 +355,29 @@ export default function HomeScreen() {
   const [error, setError] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [context, setContext] = useState<any>(null);
+  const scrollViewRef = useRef<ScrollView>(null);
 
   const MODEL_URL =
     "https://pub-741c015d579d42f8acfe54bd0788c5ef.r2.dev/gemma-2-2b-it-Q8_0.gguf";
   const modelDirectory = `${FileSystem.documentDirectory}models/`;
   const localModelPath = `${modelDirectory}gemma-2-2b-it-Q8_0-011.gguf`;
 
+  const handleMenuPress = () => {};
+
   const clearChat = () => {
     setMessages([]);
+    setInputMessage("");
   };
 
   const handleVoiceInput = () => {
     console.log("Voice input triggered");
   };
+
+  useEffect(() => {
+    if (scrollViewRef.current) {
+      scrollViewRef.current.scrollToEnd({ animated: true });
+    }
+  }, [messages]);
 
   async function loadModel() {
     try {
@@ -303,12 +452,11 @@ export default function HomeScreen() {
   }
 
   const sendMessage = async () => {
-    console.log(isProcessing, context);
     if (!inputMessage.trim() || isProcessing) return;
 
     if (!context) {
       await loadModel();
-      if (!context) return; // If loading failed
+      if (!context) return;
     }
 
     const messageToSend = inputMessage;
@@ -327,11 +475,11 @@ export default function HomeScreen() {
             {
               role: "system",
               content:
-                "This is a conversation between user and assistant, a friendly chatbot.",
+                "This is a conversation between user and assistant, an AI Therapist chatbot.",
             },
             ...newMessages,
           ],
-          n_predict: 100,
+          n_predict: 512,
           stop: [
             "</s>",
             "<|end|>",
@@ -373,7 +521,11 @@ export default function HomeScreen() {
           behavior={Platform.OS === "ios" ? "padding" : "height"}
           style={{ flex: 1 }}
         >
-          <ChatHeader isDarkMode={isDarkMode} clearChat={clearChat} />
+          <ChatHeader
+            isDarkMode={isDarkMode}
+            clearChat={clearChat}
+            onMenuPress={handleMenuPress}
+          />
 
           {error && <Error error={error} />}
 
@@ -383,7 +535,13 @@ export default function HomeScreen() {
 
           {isProcessing && !messages.length && <LoadingSpinner />}
 
-          <ScrollView style={styles.messageContainer}>
+          <ScrollView
+            style={styles.messageContainer}
+            ref={scrollViewRef}
+            onContentSizeChange={() => {
+              scrollViewRef.current?.scrollToEnd({ animated: true });
+            }}
+          >
             {messages.map((message, index) => (
               <MessageBubble
                 key={index}
@@ -440,48 +598,51 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
   },
-  quickActionsContainer: {
-    paddingHorizontal: 20,
+  actionBubblesContainer: {
+    height: 50,
     marginBottom: 10,
   },
-  quickAction: {
-    backgroundColor: "rgba(16, 163, 127, 0.1)",
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
-    marginRight: 8,
+  actionBubblesContent: {
+    paddingHorizontal: 10,
+    flexDirection: "row",
+    alignItems: "center",
   },
-  darkQuickAction: {
-    backgroundColor: "rgba(255, 255, 255, 0.1)",
+  actionBubble: {
+    backgroundColor: "rgba(179, 155, 216, 0.9)",
+    borderRadius: 25,
+    padding: 12,
+    marginHorizontal: 5,
+    minWidth: 100,
+    shadowColor: "#000",
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
   },
-  quickActionText: {
+  darkActionBubble: {
+    backgroundColor: "rgba(255, 255, 255, 0.15)",
+  },
+  actionBubbleInner: {
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  actionBubbleText: {
+    color: "#FFFFFF",
     fontSize: 14,
-    color: "#bcaddb",
+    textAlign: "left",
+    fontWeight: "600",
   },
   messageContainer: {
     flex: 1,
-    paddingHorizontal: 20,
+    padding: 15,
+    marginVertical: 5,
   },
   userMessage: {
     backgroundColor: "#b39bd8",
-    padding: 15,
-    borderRadius: 20,
-    marginVertical: 5,
     alignSelf: "flex-end",
-    maxWidth: "80%",
-  },
-  darkAssistantMessage: {
-    backgroundColor: "rgba(255, 255, 255, 0.1)",
-    padding: 15,
-    borderRadius: 20,
-    marginVertical: 5,
-    maxWidth: "80%",
-  },
-  lightAssistantMessage: {
-    backgroundColor: "#F7F7F8",
-    padding: 15,
-    borderRadius: 20,
-    marginVertical: 5,
     maxWidth: "80%",
   },
   messageText: {
@@ -515,7 +676,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   darkContainer: {
-    backgroundColor: "#343541",
+    backgroundColor: "#242634",
   },
   lightContainer: {
     backgroundColor: "#FFFFFF",
@@ -553,7 +714,16 @@ const styles = StyleSheet.create({
     backgroundColor: "#b39bd8",
     borderRadius: 2,
   },
-  assistantAvatar: {
-    marginRight: 8,
+  brainIconContainer: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: "#b39bd8",
+    justifyContent: "center",
+    alignItems: "center",
+    marginRight: 10,
+  },
+  brainIcon: {
+    transform: [{ rotate: "45deg" }],
   },
 });
